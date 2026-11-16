@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -44,6 +45,24 @@ func NewMonitorWorkspaceClient(subscriptionID string, cred azcore.TokenCredentia
 		client:         client,
 		subscriptionID: subscriptionID,
 	}, nil
+}
+
+// GetPrometheusQueryEndpoint reads the live endpoint because a recreated workspace
+// can retain its resource ID while receiving a different query hostname.
+func (p *MonitorWorkspaceClient) GetPrometheusQueryEndpoint(ctx context.Context, resourceGroup, name string) (string, error) {
+	workspace, err := p.client.Get(ctx, resourceGroup, name, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to read workspace %s/%s: %w", resourceGroup, name, err)
+	}
+	if workspace.Properties == nil || workspace.Properties.Metrics == nil || workspace.Properties.Metrics.PrometheusQueryEndpoint == nil {
+		return "", fmt.Errorf("workspace %s/%s has no Prometheus query endpoint", resourceGroup, name)
+	}
+	endpoint := *workspace.Properties.Metrics.PrometheusQueryEndpoint
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("workspace %s/%s has an invalid Prometheus query endpoint %q", resourceGroup, name, endpoint)
+	}
+	return endpoint, nil
 }
 
 // GetAllMonitorWorkspaces returns all managed Prometheus instances in the subscription
