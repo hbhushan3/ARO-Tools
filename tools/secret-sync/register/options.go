@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
@@ -155,6 +156,10 @@ func (o *ValidatedOptions) Complete() (*Options, error) {
 	keyVaultCfg, exists := cfg.KeyVaults[keyVaultURI]
 	if !exists && o.PublicKeyFile == "" {
 		return nil, fmt.Errorf("keyvault %s does not exist in encryption config and no public key file specified to bootstrap it", o.KeyVault)
+	}
+
+	if slices.Contains(keyVaultCfg.RetiredSecrets, o.SecretName) {
+		return nil, fmt.Errorf("secret %s is listed in retiredSecrets for keyvault %s; remove it from there before registering it again", o.SecretName, o.KeyVault)
 	}
 
 	if keyVaultCfg.KeyEncryptionKey == "" && o.PublicKeyFile == "" {

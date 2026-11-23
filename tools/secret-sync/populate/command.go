@@ -11,7 +11,7 @@ import (
 func NewCommand() (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:           "populate",
-		Short:         "Populate a KeyVault with encrypted content.",
+		Short:         "Populate a KeyVault with encrypted content and delete its retired secrets.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

@@ -143,6 +143,9 @@ func (o *ValidatedOptions) Complete() (*Options, error) {
 	if !exists {
 		return nil, fmt.Errorf("keyvault %s does not exist in encryption config", keyVaultURI)
 	}
+	if err := keyVaultCfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid encryption config for keyvault %s: %w", keyVaultURI, err)
+	}
 
 	creds, err := cmdutils.GetAzureTokenCredentials()
 	if err != nil {
@@ -243,6 +246,25 @@ func (opts *Options) Populate(ctx context.Context) error {
 		}
 
 		secretLogger.Info("Populated secret.")
+	}
+
+	for _, name := range opts.Config.RetiredSecrets {
+		secretLogger := logger.WithValues("secret", name)
+
+		secretLogger.Info("Deleting retired secret.")
+		deleted, err := opts.SecretsClient.DeleteSecret(ctx, name, nil)
+		var respErr *azcore.ResponseError
+		if err != nil && errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
+			secretLogger.Info("Retired secret already absent.")
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("failed to delete retired secret %s: %w", name, err)
+		}
+		if deleted.ScheduledPurgeDate != nil {
+			secretLogger = secretLogger.WithValues("scheduledPurgeDate", deleted.ScheduledPurgeDate.UTC())
+		}
+		secretLogger.Info("Deleted retired secret.")
 	}
 
 	return nil

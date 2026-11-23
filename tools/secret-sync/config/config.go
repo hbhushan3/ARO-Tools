@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 
 	"sigs.k8s.io/yaml"
@@ -21,6 +23,30 @@ type KeyVault struct {
 	// EncryptedSecrets stores Azure Key Vault secret data by secret name that should be populated into the KeyVault.
 	// These data are base64-encoded to be easy to embed into this text-based data format.
 	EncryptedSecrets map[string]EncryptedSecret `json:"encryptedSecrets"`
+
+	// RetiredSecrets lists names of secrets that must no longer exist in the KeyVault. Populating the KeyVault
+	// deletes each of them; a secret that is already absent counts as deleted. With soft-delete enabled, a deleted
+	// secret stays recoverable until it is purged, and its name cannot be populated again until then.
+	RetiredSecrets []string `json:"retiredSecrets,omitempty"`
+}
+
+// Validate checks that each retired secret is named, listed once, and not also declared in EncryptedSecrets,
+// since populating would otherwise write the secret and then delete it again on every run.
+func (k KeyVault) Validate() error {
+	retired := make(map[string]struct{}, len(k.RetiredSecrets))
+	for _, name := range k.RetiredSecrets {
+		if name == "" {
+			return errors.New("retiredSecrets must not contain an empty name")
+		}
+		if _, duplicate := retired[name]; duplicate {
+			return fmt.Errorf("secret %s is listed more than once in retiredSecrets", name)
+		}
+		if _, declared := k.EncryptedSecrets[name]; declared {
+			return fmt.Errorf("secret %s is declared in encryptedSecrets and listed in retiredSecrets", name)
+		}
+		retired[name] = struct{}{}
+	}
+	return nil
 }
 
 type EncryptedSecret struct {
